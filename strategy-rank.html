@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Strategy Ranker // DATABANK</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Syne:wght@600;700;800&display=swap');
+
+:root {
+  --bg:#060810; --bg2:#0a0d16; --bg3:#0d1120; --panel:#101525;
+  --border:#172030; --border2:#1f2e45;
+  --accent:#00c8f0; --green:#00e87a; --red:#ff3d5a; --amber:#ffb020; --purple:#a78bfa;
+  --text:#b0c8d8; --dim:#3d5a72; --bright:#e0eff8;
+  --mono:'JetBrains Mono',monospace; --sans:'Syne',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(0,200,240,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(0,200,240,.02) 1px,transparent 1px);
+  background-size:52px 52px}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.035) 3px,rgba(0,0,0,.035) 4px)}
+.z1{position:relative;z-index:1}
+
+/* HEADER */
+header{position:sticky;top:0;z-index:100;background:rgba(6,8,16,.93);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);height:52px;padding:0 24px;display:flex;align-items:center;justify-content:space-between}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-gem{width:30px;height:30px;background:conic-gradient(from 0deg,var(--accent),var(--green),var(--purple),var(--accent));
+  clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);animation:hue 10s linear infinite}
+@keyframes hue{to{filter:hue-rotate(360deg)}}
+.logo-name{font-family:var(--sans);font-size:14px;font-weight:800;color:var(--bright);letter-spacing:2px}
+.logo-sub{font-size:9px;color:var(--dim);letter-spacing:3px}
+.hdr-r{display:flex;gap:8px;align-items:center}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 13px;border-radius:4px;
+  border:1px solid var(--border2);background:var(--panel);color:var(--text);
+  font-family:var(--mono);font-size:11px;cursor:pointer;transition:all .16s;letter-spacing:.4px;white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--accent);box-shadow:0 0 14px rgba(0,200,240,.14)}
+.btn:disabled{opacity:.3;pointer-events:none}
+.btn-accent{border-color:var(--accent);color:var(--accent);background:rgba(0,200,240,.06)}
+.btn-accent:hover{background:rgba(0,200,240,.14);box-shadow:0 0 22px rgba(0,200,240,.22)}
+.btn-green{border-color:var(--green);color:var(--green);background:rgba(0,232,122,.05)}
+.btn-green:hover{background:rgba(0,232,122,.12)}
+.btn-purple{border-color:var(--purple);color:var(--purple);background:rgba(167,139,250,.05)}
+.btn-purple:hover{background:rgba(167,139,250,.12)}
+
+/* STATUS STRIP */
+.strip{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding:5px 24px;
+  background:var(--bg2);border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1px}
+.si{display:flex;align-items:center;gap:6px;color:var(--dim)}
+.sv{color:var(--accent);font-weight:600}
+.sdot{width:5px;height:5px;border-radius:50%;background:var(--dim)}
+.sdot.on{background:var(--green);box-shadow:0 0 6px var(--green);animation:blink 2s infinite}
+@keyframes blink{50%{opacity:.3}}
+
+/* STEPS */
+.steps{display:flex;margin-bottom:18px;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.step{flex:1;padding:10px 14px;background:var(--bg3);font-size:10px;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:8px;
+  border-right:1px solid var(--border);transition:all .2s}
+.step:last-child{border-right:none}
+.step-n{font-family:var(--sans);font-weight:800;font-size:14px}
+.step.done{color:var(--accent);background:rgba(0,200,240,.04);border-color:rgba(0,200,240,.12)}
+.step.active{color:var(--green);background:rgba(0,232,122,.04);border-color:rgba(0,232,122,.12)}
+
+/* SECTION */
+.sec{background:var(--panel);border:1px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden}
+.sec-hdr{display:flex;align-items:center;justify-content:space-between;padding:11px 20px;
+  border-bottom:1px solid var(--border);background:rgba(0,0,0,.2);cursor:pointer;user-select:none}
+.sec-title{display:flex;align-items:center;gap:10px;font-family:var(--sans);font-size:10px;
+  font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:var(--bright)}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 7px var(--accent);animation:blink 2s infinite}
+.pulse-p{width:6px;height:6px;border-radius:50%;background:var(--purple);box-shadow:0 0 7px var(--purple);animation:blink 2s infinite}
+.pulse-g{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 7px var(--green);animation:blink 2s infinite}
+.chevron{font-size:12px;color:var(--dim);transition:transform .2s}
+.chevron.up{transform:rotate(-90deg)}
+.sec-body{padding:18px 20px}
+.collapsed{display:none}
+
+/* UPLOAD */
+#dropZone{border:2px dashed var(--border2);border-radius:8px;background:var(--bg3);
+  padding:52px 40px;text-align:center;cursor:pointer;transition:all .25s;position:relative;overflow:hidden}
+#dropZone::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at center,rgba(0,200,240,.06),transparent 70%);opacity:0;transition:opacity .3s}
+#dropZone:hover::before,#dropZone.drag::before{opacity:1}
+#dropZone:hover,#dropZone.drag{border-color:var(--accent);box-shadow:0 0 30px rgba(0,200,240,.1)}
+.up-icon{font-size:36px;margin-bottom:12px}
+.up-title{font-family:var(--sans);font-size:17px;color:var(--bright);margin-bottom:8px}
+.up-sub{color:var(--dim);font-size:10px;letter-spacing:1px}
+#fileIn,#cfgFileIn{display:none}
+
+/* SESSION BANNER */
+.session-banner{display:flex;align-items:center;gap:12px;padding:10px 16px;
+  background:rgba(0,232,122,.04);border:1px solid rgba(0,232,122,.2);border-radius:6px;
+  margin-bottom:14px;font-size:11px}
+.session-banner .sb-icon{font-size:16px}
+.session-banner .sb-text{flex:1;color:var(--text)}
+.session-banner .sb-text strong{color:var(--green)}
+
+/* KPI GRID */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;margin-bottom:14px}
+.kpi-card{border:1px solid var(--border);border-radius:5px;padding:9px 13px;background:var(--bg3);cursor:pointer;transition:all .16s}
+.kpi-card:hover{border-color:var(--border2)}
+.kpi-card.sel{border-color:var(--accent);background:rgba(0,200,240,.07)}
+.kn{font-size:11px;color:var(--text);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kv{font-size:10px;color:var(--dim)}
+
+/* CFG ROWS */
+.cfg-row{display:grid;grid-template-columns:1fr 115px 185px 30px;gap:12px;align-items:center;
+  padding:9px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:5px;margin-bottom:7px}
+.cfg-row:hover{border-color:var(--border2)}
+.cfg-n{font-size:11px;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.w-wrap{display:flex;align-items:center;gap:5px}
+.w-in{width:60px;background:var(--bg);border:1px solid var(--border);border-radius:4px;
+  padding:5px 7px;color:var(--bright);font-family:var(--mono);font-size:12px;text-align:right;outline:none;transition:border-color .15s}
+.w-in:focus{border-color:var(--accent)}
+.w-u{color:var(--dim);font-size:10px}
+.dir-tog{display:flex;border:1px solid var(--border);border-radius:4px;overflow:hidden}
+.dir-b{flex:1;padding:5px 6px;border:none;background:transparent;color:var(--dim);font-family:var(--mono);font-size:10px;cursor:pointer;transition:all .15s}
+.dir-b.up{background:rgba(0,232,122,.13);color:var(--green)}
+.dir-b.dn{background:rgba(255,61,90,.13);color:var(--red)}
+.del-b{background:none;border:none;color:var(--dim);cursor:pointer;font-size:13px;transition:color .15s}
+.del-b:hover{color:var(--red)}
+.wb{padding:10px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:5px;margin-bottom:14px}
+.wb-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.wb-lbl{font-size:10px;color:var(--dim);letter-spacing:1px;text-transform:uppercase}
+.wb-val{font-family:var(--sans);font-size:17px;font-weight:700}
+.wb-track{height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.wb-fill{height:100%;border-radius:2px;transition:width .25s,background .25s}
+
+/* CONFIG MANAGER */
+.cfg-save-row{display:flex;align-items:center;gap:8px;padding:10px 14px;margin-bottom:8px;
+  background:var(--bg3);border:1px solid var(--border);border-radius:5px}
+.cfg-name-in{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;
+  padding:6px 10px;color:var(--bright);font-family:var(--mono);font-size:11px;outline:none;transition:border-color .15s}
+.cfg-name-in:focus{border-color:var(--purple)}
+.cfg-name-in::placeholder{color:var(--dim);font-style:italic}
+.saved-cfg-item{display:flex;align-items:center;gap:10px;padding:8px 14px;
+  background:var(--bg3);border:1px solid var(--border);border-radius:5px;margin-bottom:6px;transition:border-color .15s}
+.saved-cfg-item:hover{border-color:var(--border2)}
+.sci-name{flex:1;font-size:11px;color:var(--bright)}
+.sci-meta{font-size:10px;color:var(--dim);margin-right:4px}
+.sci-del{background:none;border:none;color:var(--dim);cursor:pointer;font-size:13px;transition:color .15s}
+.sci-del:hover{color:var(--red)}
+.no-configs{font-size:11px;color:var(--dim);padding:12px 14px;font-style:italic}
+
+/* TABLE */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:6px}
+table{width:100%;border-collapse:collapse}
+thead tr{background:var(--bg3);position:sticky;top:0;z-index:10}
+th{padding:9px 12px;text-align:left;font-family:var(--sans);font-size:9px;font-weight:700;
+  letter-spacing:2px;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--border);
+  white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s}
+th:hover,th.sorted{color:var(--accent)}
+tbody tr{border-bottom:1px solid rgba(23,32,48,.7);transition:background .12s}
+tbody tr:hover{background:rgba(0,200,240,.035)}
+tbody tr:last-child{border-bottom:none}
+td{padding:7px 12px;white-space:nowrap;color:var(--text)}
+.rank-b{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:4px;font-family:var(--sans);font-size:10px;font-weight:800}
+.r1{background:rgba(255,176,32,.14);color:var(--amber);border:1px solid rgba(255,176,32,.3)}
+.r2{background:rgba(190,215,240,.07);color:#88a8c8;border:1px solid rgba(136,168,200,.2)}
+.r3{background:rgba(200,130,90,.09);color:#b88060;border:1px solid rgba(184,128,96,.22)}
+.rn{background:var(--bg3);color:var(--dim);border:1px solid var(--border)}
+.score-wrap{display:flex;align-items:center;gap:8px}
+.score-track{width:54px;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.score-fill{height:100%;border-radius:2px}
+.neg{color:var(--red)}
+.ann-in{background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);
+  font-family:var(--mono);font-size:11px;width:150px;padding:2px 4px;outline:none;transition:border-color .15s}
+.ann-in:focus{border-color:var(--accent)}
+.ann-in::placeholder{color:var(--dim);font-style:italic}
+
+/* FILTER ROW */
+.filter-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.search-in{background:var(--bg3);border:1px solid var(--border);border-radius:4px;
+  padding:6px 12px;color:var(--text);font-family:var(--mono);font-size:11px;
+  outline:none;transition:border-color .15s;width:220px}
+.search-in:focus{border-color:var(--accent)}
+.search-in::placeholder{color:var(--dim)}
+.rows-info{font-size:10px;color:var(--dim);margin-left:auto}
+
+/* MODAL */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);z-index:200;
+  display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .22s}
+.overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:12px;
+  width:680px;max-width:95vw;max-height:82vh;overflow-y:auto;box-shadow:0 0 60px rgba(0,200,240,.07);
+  transform:translateY(18px);transition:transform .22s}
+.overlay.open .modal{transform:translateY(0)}
+.modal-hdr{display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid var(--border)}
+.modal-title{font-family:var(--sans);font-size:13px;font-weight:700;color:var(--bright);letter-spacing:1px}
+.modal-body{padding:22px}
+.h3{font-family:var(--sans);font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  color:var(--accent);margin-bottom:9px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+.hp{color:var(--text);line-height:1.75;font-size:11px;margin-bottom:8px}
+.hcode{background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--accent);
+  border-radius:4px;padding:10px 14px;font-size:11px;color:var(--green);margin:9px 0;line-height:1.7}
+.htip{padding:9px 14px;background:rgba(255,176,32,.05);border:1px solid rgba(255,176,32,.2);
+  border-radius:4px;font-size:11px;color:var(--amber);margin-top:8px}
+.hs{margin-bottom:20px}
+
+/* TOAST */
+.toast{position:fixed;bottom:22px;right:22px;background:var(--panel);border:1px solid var(--border2);
+  border-radius:5px;padding:9px 16px;font-size:11px;color:var(--bright);z-index:300;
+  transform:translateY(60px);opacity:0;transition:all .22s;box-shadow:0 8px 28px rgba(0,0,0,.4)}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.ok{border-left:3px solid var(--green)}
+.toast.err{border-left:3px solid var(--red)}
+.toast.info{border-left:3px solid var(--purple)}
+
+/* MISC */
+.wrap{max-width:1800px;margin:0 auto;padding:18px 24px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.div{height:1px;background:var(--border);margin:13px 0}
+.note{font-size:10px;color:var(--dim);margin-top:7px}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+</style>
+</head>
+<body>
+
+<header class="z1">
+  <div class="logo">
+    <div class="logo-gem"></div>
+    <div>
+      <div class="logo-name">STRATEGY RANKER</div>
+      <div class="logo-sub">DATABANK EDITION</div>
+    </div>
+  </div>
+  <div class="hdr-r">
+    <button class="btn" id="langBtn" onclick="toggleLang()">🌐 ES</button>
+    <button class="btn" id="helpBtn" onclick="openHelp()"><span data-i18n="guide">? GUIDE</span></button>
+    <button class="btn btn-green" id="exportBtn" onclick="doExport()" disabled>↓ <span data-i18n="exportCsv">EXPORT CSV</span></button>
+  </div>
+</header>
+
+<div class="strip z1">
+  <div class="si"><div class="sdot" id="d1"></div><span data-i18n="rows">ROWS</span>:<span class="sv" id="s1">0</span></div>
+  <div class="si"><div class="sdot" id="d2"></div><span data-i18n="numCols">NUMERIC COLS</span>:<span class="sv" id="s2">0</span></div>
+  <div class="si"><div class="sdot" id="d3"></div><span data-i18n="kpisSelected">KPIs SELECTED</span>:<span class="sv" id="s3">0</span></div>
+  <div class="si"><div class="sdot" id="d4"></div><span data-i18n="weightTotal">WEIGHT TOTAL</span>:<span class="sv" id="s4">0%</span></div>
+  <div class="si" style="margin-left:auto"><span id="s5" style="color:var(--dim)"></span></div>
+</div>
+
+<div class="wrap z1">
+
+  <div class="steps">
+    <div class="step active" id="stp1"><span class="step-n">01</span><span data-i18n="step1">LOAD CSV</span></div>
+    <div class="step" id="stp2"><span class="step-n">02</span><span data-i18n="step2">SELECT KPIs</span></div>
+    <div class="step" id="stp3"><span class="step-n">03</span><span data-i18n="step3">WEIGHTS</span></div>
+    <div class="step" id="stp4"><span class="step-n">04</span><span data-i18n="step4">RANKING</span></div>
+  </div>
+
+  <!-- SESSION BANNER -->
+  <div id="sessionBanner" class="session-banner" style="display:none">
+    <span class="sb-icon">💾</span>
+    <span class="sb-text" id="sessionBannerText"></span>
+    <button class="btn" onclick="clearSession()">✕ <span data-i18n="clearSession">CLEAR SESSION</span></button>
+  </div>
+
+  <!-- 01 LOAD -->
+  <div class="sec">
+    <div class="sec-hdr" onclick="tog('upBody',this)">
+      <div class="sec-title"><div class="pulse"></div><span data-i18n="loadFile">LOAD DATABANK FILE</span></div>
+      <span class="chevron">▾</span>
+    </div>
+    <div class="sec-body" id="upBody">
+      <div id="dropZone"
+        onclick="document.getElementById('fileIn').click()"
+        ondragover="doDrag(event,true)" ondragleave="doDrag(event,false)" ondrop="doDrop(event)">
+        <div class="up-icon">📊</div>
+        <div class="up-title" data-i18n="dropTitle">DROP YOUR DATABANK CSV HERE</div>
+        <div class="up-sub" data-i18n="dropSub">ONE ROW PER STRATEGY · AUTO-DETECTS DELIMITER & NUMERIC COLUMNS</div>
+      </div>
+      <input type="file" id="fileIn" accept=".csv,.txt" onchange="loadFile(event)"/>
+      <div id="fileInfo" style="margin-top:12px;font-size:11px;color:var(--dim)"></div>
+    </div>
+  </div>
+
+  <!-- 02 KPI SELECTOR -->
+  <div class="sec" id="kpiSec" style="display:none">
+    <div class="sec-hdr" onclick="tog('kpiBody',this)">
+      <div class="sec-title"><div class="pulse"></div><span data-i18n="kpiSelection">KPI SELECTION</span></div>
+      <span class="chevron">▾</span>
+    </div>
+    <div class="sec-body" id="kpiBody">
+      <div class="note" style="margin-bottom:12px"><span data-i18n="kpiNote">ONLY NUMERIC COLUMNS SHOWN · CLICK TO TOGGLE · TEXT COLUMNS APPEAR IN RESULTS BUT CANNOT BE WEIGHTED</span></div>
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="div"></div>
+      <div class="row">
+        <button class="btn" onclick="kAll()" data-i18n="selectAll">SELECT ALL</button>
+        <button class="btn" onclick="kNone()" data-i18n="clearAll">CLEAR ALL</button>
+        <button class="btn btn-accent" onclick="applyKpis()">⚡ <span data-i18n="configWeights">CONFIGURE WEIGHTS →</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 03 WEIGHT CONFIG -->
+  <div class="sec" id="cfgSec" style="display:none">
+    <div class="sec-hdr" onclick="tog('cfgBody',this)">
+      <div class="sec-title"><div class="pulse"></div><span data-i18n="weightConfig">WEIGHT CONFIGURATION</span></div>
+      <span class="chevron">▾</span>
+    </div>
+    <div class="sec-body" id="cfgBody">
+      <div class="wb">
+        <div class="wb-top"><span class="wb-lbl" data-i18n="totalWeight">TOTAL WEIGHT</span><span class="wb-val" id="wbV">0%</span></div>
+        <div class="wb-track"><div class="wb-fill" id="wbF" style="width:0%"></div></div>
+      </div>
+      <div id="cfgList"></div>
+      <div class="div"></div>
+      <div class="row">
+        <button class="btn" onclick="autoW()">⚖ <span data-i18n="autoDistribute">AUTO-DISTRIBUTE</span></button>
+        <button class="btn btn-accent" onclick="doCalc()">🚀 <span data-i18n="calcRanking">CALCULATE RANKING</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI CONFIG MANAGER -->
+  <div class="sec" id="cfgMgrSec" style="display:none">
+    <div class="sec-hdr" onclick="tog('cfgMgrBody',this)">
+      <div class="sec-title"><div class="pulse-p"></div><span data-i18n="kpiConfigs">KPI CONFIGURATIONS</span></div>
+      <span class="chevron">▾</span>
+    </div>
+    <div class="sec-body" id="cfgMgrBody">
+      <div class="note" style="margin-bottom:12px"><span data-i18n="cfgMgrNote">SAVE THE CURRENT KPI SELECTION + WEIGHTS AS A NAMED PROFILE. STORE IN BROWSER OR EXPORT AS .json FILE TO DISK.</span></div>
+
+      <div class="cfg-save-row">
+        <input class="cfg-name-in" type="text" id="cfgNameIn" data-i18n-ph="cfgPlaceholder" placeholder="profile name (e.g. aggressive, conservative, oos-only…)" maxlength="60"/>
+        <button class="btn btn-purple" onclick="saveProfileToStorage()">💾 <span data-i18n="saveToBrowser">SAVE TO BROWSER</span></button>
+        <button class="btn btn-purple" onclick="saveProfileToFile()">⬇ <span data-i18n="exportJson">EXPORT .json</span></button>
+      </div>
+
+      <div class="row" style="margin-bottom:14px">
+        <button class="btn" onclick="document.getElementById('cfgFileIn').click()">📂 <span data-i18n="loadFromFile">LOAD FROM FILE</span></button>
+        <input type="file" id="cfgFileIn" accept=".json" onchange="loadProfileFromFile(event)"/>
+        <span class="note" style="margin-top:0" data-i18n="importNote">Import a previously exported .json profile</span>
+      </div>
+
+      <div class="div"></div>
+      <div style="font-size:10px;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px"><span data-i18n="savedInBrowser">SAVED IN BROWSER</span></div>
+      <div id="savedProfilesList"><div class="no-configs">No profiles saved yet.</div></div>
+    </div>
+  </div>
+
+  <!-- 04 RESULTS -->
+  <div class="sec" id="resSec" style="display:none">
+    <div class="sec-hdr" onclick="tog('resBody',this)">
+      <div class="sec-title"><div class="pulse-g"></div><span data-i18n="rankingResults">RANKING RESULTS</span></div>
+      <span class="chevron">▾</span>
+    </div>
+    <div class="sec-body" id="resBody">
+      <div class="filter-row">
+        <input class="search-in" type="text" id="searchIn" data-i18n-ph="filterPlaceholder" placeholder="🔍  filter by strategy name…" oninput="renderTable()"/>
+        <button class="btn" onclick="document.getElementById('searchIn').value='';renderTable()">✕ <span data-i18n="clear">CLEAR</span></button>
+        <span class="rows-info" id="rowInfo"></span>
+      </div>
+      <div id="tblWrap"></div>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<!-- HELP MODAL -->
+<div class="overlay" id="helpM">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div class="modal-title" data-i18n="helpTitle">USER GUIDE // STRATEGY RANKER — DATABANK EDITION</div>
+      <button class="btn" onclick="closeHelp()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="hs">
+        <div class="h3">📁 What is this?</div>
+        <p class="hp">Load a CSV where each row is an already-evaluated strategy with pre-computed KPIs (e.g. a G5 Databank export). Choose which numeric columns to rank on, assign weights, and score every strategy 0–100 using percentile normalization.</p>
+      </div>
+      <div class="hs">
+        <div class="h3">📐 Percentile Normalization</div>
+        <div class="hcode">P(i,k) = rank(value_i) / (n − 1)   [midpoint for ties]
+If "Less is Better": P = 1 − P
+Score = Σ(P(i,k) × Weight_k) × 100  →  range: 0 – 100</div>
+      </div>
+      <div class="hs">
+        <div class="h3">↕ KPI Direction — ▲ MORE vs ▼ LESS</div>
+        <p class="hp">Controls how the percentile rank maps to score:</p>
+        <div class="hcode">▲ MORE IS BETTER → high value → high percentile → high score
+  e.g. Net Profit, Sharpe, Win Rate, Profit Factor, Ret/DD Ratio
+
+▼ LESS IS BETTER → low value → high percentile → high score
+  e.g. Max Drawdown, Max Consec. Losses, MAE</div>
+        <div class="htip">⚠ "Max Consec. Losses" and drawdown columns are auto-flagged as LESS IS BETTER.</div>
+      </div>
+      <div class="hs">
+        <div class="h3">💾 Session Persistence</div>
+        <p class="hp">The last loaded file (data + config) is automatically saved in the browser. When you reopen the app the entire state is restored — data, selected KPIs, weights, directions, annotations — so you can continue exactly where you left off without reloading the CSV.</p>
+      </div>
+      <div class="hs">
+        <div class="h3">🗂 KPI Configuration Profiles</div>
+        <p class="hp">The <strong>KPI CONFIGURATIONS</strong> panel lets you save named profiles of your current KPI selection + weights. Two storage options:</p>
+        <div class="hcode">SAVE TO BROWSER  → stored in this browser, survives page reloads,
+                    quick to apply
+EXPORT .json     → downloads a file you can share, use on
+                    other machines, or archive
+LOAD FROM FILE   → import a .json profile back into the app</div>
+        <p class="hp" style="margin-top:8px">Profiles are applied by clicking ▶ APPLY. If the loaded CSV is missing some KPIs from the profile, those are silently skipped and you'll see a warning.</p>
+      </div>
+      <div class="hs">
+        <div class="h3">💾 Export Results</div>
+        <p class="hp">EXPORT CSV downloads the ranked table with all original columns plus __RANK, __SCORE, per-KPI percentiles (__PCT_…), and any annotations you typed.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   I18N
+═══════════════════════════════════════════════════════════ */
+const LANG_KEY = 'ranker:lang';
+let LANG = 'en';
+
+const T = {
+  en: {
+    guide:'? GUIDE', exportCsv:'EXPORT CSV',
+    rows:'ROWS', numCols:'NUMERIC COLS', kpisSelected:'KPIs SELECTED', weightTotal:'WEIGHT TOTAL',
+    step1:'LOAD CSV', step2:'SELECT KPIs', step3:'WEIGHTS', step4:'RANKING',
+    clearSession:'CLEAR SESSION',
+    loadFile:'LOAD DATABANK FILE',
+    dropTitle:'DROP YOUR DATABANK CSV HERE',
+    dropSub:'ONE ROW PER STRATEGY · AUTO-DETECTS DELIMITER & NUMERIC COLUMNS',
+    kpiSelection:'KPI SELECTION',
+    kpiNote:'ONLY NUMERIC COLUMNS SHOWN · CLICK TO TOGGLE · TEXT COLUMNS APPEAR IN RESULTS BUT CANNOT BE WEIGHTED',
+    selectAll:'SELECT ALL', clearAll:'CLEAR ALL', configWeights:'CONFIGURE WEIGHTS →',
+    weightConfig:'WEIGHT CONFIGURATION', totalWeight:'TOTAL WEIGHT',
+    autoDistribute:'AUTO-DISTRIBUTE', calcRanking:'CALCULATE RANKING',
+    kpiConfigs:'KPI CONFIGURATIONS',
+    cfgMgrNote:'SAVE THE CURRENT KPI SELECTION + WEIGHTS AS A NAMED PROFILE. STORE IN BROWSER OR EXPORT AS .json FILE TO DISK.',
+    cfgPlaceholder:'profile name (e.g. aggressive, conservative, oos-only…)',
+    saveToBrowser:'SAVE TO BROWSER', exportJson:'EXPORT .json', loadFromFile:'LOAD FROM FILE',
+    importNote:'Import a previously exported .json profile',
+    savedInBrowser:'SAVED IN BROWSER',
+    rankingResults:'RANKING RESULTS',
+    filterPlaceholder:'🔍  filter by strategy name…',
+    clear:'CLEAR',
+    helpTitle:'USER GUIDE // STRATEGY RANKER — DATABANK EDITION',
+    noProfiles:'No profiles saved yet.',
+    applyBtn:'▶ APPLY', fileBtn:'⬇ FILE',
+    noteLabel:'NOTE', addNote:'add note…',
+    rankLabel:'RANK', scoreLabel:'SCORE',
+    showingLabel:'SHOWING', ofLabel:'/',
+    hoverNote:'HOVER KPI COLUMN FOR PERCENTILE · KPI HEADERS IN CYAN · CLICK HEADER TO SORT',
+    copyModalWarn:'⚠ Direct download is blocked in this environment. Copy the text below and paste it into a new file on your computer.',
+    copyAll:'📋 COPY ALL', closeLabel:'✕ CLOSE', saveAsLabel:'💾 SAVE AS: ',
+    copiedMsg:'Copied to clipboard!',
+    sessionRestored:'Session restored from last visit',
+    sessionBannerOf:'strategies — saved',
+    sessionRestoredOf:'restored from session',
+    // help modal
+    h_what:'📁 What is this?',
+    h_what_p:'Load a CSV where each row is an already-evaluated strategy with pre-computed KPIs (e.g. a G5 Databank export). Choose which numeric columns to rank on, assign weights, and score every strategy 0–100 using percentile normalization.',
+    h_pct:'📐 Percentile Normalization',
+    h_dir:'↕ KPI Direction — ▲ MORE vs ▼ LESS',
+    h_dir_p:'Controls how the percentile rank maps to score:',
+    h_dir_code:'▲ MORE IS BETTER → high value → high percentile → high score\n  e.g. Net Profit, Sharpe, Win Rate, Profit Factor, Ret/DD Ratio\n\n▼ LESS IS BETTER → low value → high percentile → high score\n  e.g. Max Drawdown, Max Consec. Losses, MAE',
+    h_dir_tip:'⚠ "Max Consec. Losses" and drawdown columns are auto-flagged as LESS IS BETTER.',
+    h_ses:'💾 Session Persistence',
+    h_ses_p:'The last loaded file (data + config) is automatically saved in the browser. When you reopen the app the entire state is restored — data, selected KPIs, weights, directions, annotations — so you can continue exactly where you left off without reloading the CSV.',
+    h_cfg:'🗂 KPI Configuration Profiles',
+    h_cfg_p:'The <strong>KPI CONFIGURATIONS</strong> panel lets you save named profiles of your current KPI selection + weights. Two storage options:',
+    h_cfg_code:'SAVE TO BROWSER  → stored in this browser, survives page reloads,\n                    quick to apply\nEXPORT .json     → downloads a file you can share, use on\n                    other machines, or archive\nLOAD FROM FILE   → import a .json profile back into the app',
+    h_cfg_p2:'Profiles are applied by clicking ▶ APPLY. If the loaded CSV is missing some KPIs from the profile, those are silently skipped and you\'ll see a warning.',
+    h_exp:'💾 Export Results',
+    h_exp_p:'EXPORT CSV downloads the ranked table with all original columns plus __RANK, __SCORE, per-KPI percentiles (__PCT_…), and any annotations you typed.',
+    // toasts
+    t_fileEmpty:'File appears empty',
+    t_parseError:'Parse error: ',
+    t_loaded:'strategies,  numeric columns',
+    t_noKpi:'Select at least 1 KPI',
+    t_noRows:'Need at least 2 rows',
+    t_weightErr:'Weights sum to',
+    t_weightMust:'— must be 100%',
+    t_ranked:'Ranking complete —',
+    t_rankedOf:'strategies scored',
+    t_csvExported:'CSV exported!',
+    t_copied:'Copied to clipboard!',
+    t_sessionCleared:'Session cleared',
+    t_noName:'Enter a profile name',
+    t_noKpiSel:'No KPIs selected',
+    t_noStorage:'Browser storage not available',
+    t_storageErr:'Storage error: ',
+    t_exported:'Exported: ',
+    t_profApplied:'Profile',
+    t_profAppliedOf:'applied —',
+    t_profKpis:'KPIs',
+    t_profMissing:'KPI(s) not in file: ',
+    t_profNotFound:'Profile not found',
+    t_profErrApply:'Error applying profile',
+    t_profDeleted:'Profile deleted',
+    t_profSaved:'saved to browser',
+    t_delimiter:'delimiter',
+    t_strategies:'strategies',
+    t_numericCols:'numeric columns',
+    t_profilesTitle:'SAVED IN BROWSER',
+    t_kpisLabel:'KPIs ·',
+  },
+  es: {
+    guide:'? GUÍA', exportCsv:'EXPORTAR CSV',
+    rows:'FILAS', numCols:'COLS NUMÉRICAS', kpisSelected:'KPIs SELECCIONADOS', weightTotal:'PESO TOTAL',
+    step1:'CARGAR CSV', step2:'SELEC. KPIs', step3:'PESOS', step4:'RANKING',
+    clearSession:'BORRAR SESIÓN',
+    loadFile:'CARGAR ARCHIVO DATABANK',
+    dropTitle:'ARRASTRA TU CSV DATABANK AQUÍ',
+    dropSub:'UNA FILA POR ESTRATEGIA · DETECTA DELIMITADOR Y COLUMNAS NUMÉRICAS AUTOMÁTICAMENTE',
+    kpiSelection:'SELECCIÓN DE KPIs',
+    kpiNote:'SOLO SE MUESTRAN COLUMNAS NUMÉRICAS · CLICK PARA ACTIVAR/DESACTIVAR · LAS COLUMNAS DE TEXTO APARECEN EN RESULTADOS PERO NO SE PUEDEN PONDERAR',
+    selectAll:'SELECCIONAR TODOS', clearAll:'DESELECCIONAR TODOS', configWeights:'CONFIGURAR PESOS →',
+    weightConfig:'CONFIGURACIÓN DE PESOS', totalWeight:'PESO TOTAL',
+    autoDistribute:'DISTRIBUCIÓN AUTOMÁTICA', calcRanking:'CALCULAR RANKING',
+    kpiConfigs:'CONFIGURACIONES DE KPIs',
+    cfgMgrNote:'GUARDA LA SELECCIÓN DE KPIs + PESOS ACTUALES COMO UN PERFIL CON NOMBRE. ALMACENA EN EL NAVEGADOR O EXPORTA COMO ARCHIVO .json.',
+    cfgPlaceholder:'nombre del perfil (ej. agresivo, conservador, solo-oos…)',
+    saveToBrowser:'GUARDAR EN NAVEGADOR', exportJson:'EXPORTAR .json', loadFromFile:'CARGAR DESDE ARCHIVO',
+    importNote:'Importar un perfil .json exportado previamente',
+    savedInBrowser:'GUARDADO EN NAVEGADOR',
+    rankingResults:'RESULTADOS DEL RANKING',
+    filterPlaceholder:'🔍  filtrar por nombre de estrategia…',
+    clear:'LIMPIAR',
+    helpTitle:'GUÍA DE USO // STRATEGY RANKER — EDICIÓN DATABANK',
+    noProfiles:'Aún no hay perfiles guardados.',
+    applyBtn:'▶ APLICAR', fileBtn:'⬇ ARCHIVO',
+    noteLabel:'NOTA', addNote:'añadir nota…',
+    rankLabel:'RANK', scoreLabel:'PUNTUACIÓN',
+    showingLabel:'MOSTRANDO', ofLabel:'/',
+    hoverNote:'PASA EL CURSOR SOBRE KPIs PARA VER PERCENTIL · CABECERAS KPI EN CYAN · CLICK PARA ORDENAR',
+    copyModalWarn:'⚠ La descarga directa está bloqueada en este entorno. Copia el texto de abajo y pégalo en un nuevo archivo en tu ordenador.',
+    copyAll:'📋 COPIAR TODO', closeLabel:'✕ CERRAR', saveAsLabel:'💾 GUARDAR COMO: ',
+    copiedMsg:'¡Copiado al portapapeles!',
+    sessionRestored:'Sesión restaurada desde la última visita',
+    sessionBannerOf:'estrategias — guardado',
+    sessionRestoredOf:'restaurado desde sesión',
+    h_what:'📁 ¿Qué es esto?',
+    h_what_p:'Carga un CSV donde cada fila es una estrategia ya evaluada con KPIs pre-calculados (ej. un export del Databank de G5). Elige qué columnas numéricas usar para el ranking, asigna pesos, y puntúa cada estrategia de 0 a 100 usando normalización por percentiles.',
+    h_pct:'📐 Normalización por Percentiles',
+    h_dir:'↕ Dirección del KPI — ▲ MÁS vs ▼ MENOS',
+    h_dir_p:'Controla cómo se mapea el percentil a la puntuación:',
+    h_dir_code:'▲ MÁS ES MEJOR → valor alto → percentil alto → puntuación alta\n  ej. Beneficio Neto, Sharpe, Win Rate, Factor Beneficio, Ret/DD\n\n▼ MENOS ES MEJOR → valor bajo → percentil alto → puntuación alta\n  ej. Drawdown Máximo, Pérdidas Consecutivas Máx., MAE',
+    h_dir_tip:'⚠ Las columnas de "Pérdidas Consecutivas" y drawdown se marcan automáticamente como MENOS ES MEJOR.',
+    h_ses:'💾 Persistencia de Sesión',
+    h_ses_p:'El último archivo cargado (datos + configuración) se guarda automáticamente en el navegador. Al reabrir la app, se restaura el estado completo — datos, KPIs seleccionados, pesos, direcciones, anotaciones — sin necesidad de volver a cargar el CSV.',
+    h_cfg:'🗂 Perfiles de Configuración de KPIs',
+    h_cfg_p:'El panel <strong>CONFIGURACIONES DE KPIs</strong> permite guardar perfiles con nombre de tu selección actual de KPIs + pesos. Dos opciones de almacenamiento:',
+    h_cfg_code:'GUARDAR EN NAVEGADOR → guardado en este navegador, sobrevive\n                       recargas, rápido de aplicar\nEXPORTAR .json      → descarga un archivo para compartir, usar en\n                       otros equipos o archivar\nCARGAR DESDE ARCHIVO → importa un perfil .json de vuelta a la app',
+    h_cfg_p2:'Los perfiles se aplican haciendo clic en ▶ APLICAR. Si el CSV cargado no tiene algunos KPIs del perfil, se omiten silenciosamente y recibirás un aviso.',
+    h_exp:'💾 Exportar Resultados',
+    h_exp_p:'EXPORTAR CSV descarga la tabla de ranking con todas las columnas originales más __RANK, __SCORE, percentiles por KPI (__PCT_…) y las anotaciones que hayas escrito.',
+    t_fileEmpty:'El archivo parece estar vacío',
+    t_parseError:'Error de parseo: ',
+    t_loaded:'estrategias, columnas numéricas',
+    t_noKpi:'Selecciona al menos 1 KPI',
+    t_noRows:'Se necesitan al menos 2 filas',
+    t_weightErr:'Los pesos suman',
+    t_weightMust:'— deben sumar 100%',
+    t_ranked:'Ranking completo —',
+    t_rankedOf:'estrategias puntuadas',
+    t_csvExported:'¡CSV exportado!',
+    t_copied:'¡Copiado al portapapeles!',
+    t_sessionCleared:'Sesión borrada',
+    t_noName:'Introduce un nombre de perfil',
+    t_noKpiSel:'No hay KPIs seleccionados',
+    t_noStorage:'Almacenamiento del navegador no disponible',
+    t_storageErr:'Error de almacenamiento: ',
+    t_exported:'Exportado: ',
+    t_profApplied:'Perfil',
+    t_profAppliedOf:'aplicado —',
+    t_profKpis:'KPIs',
+    t_profMissing:'KPI(s) no encontrados en el archivo: ',
+    t_profNotFound:'Perfil no encontrado',
+    t_profErrApply:'Error al aplicar el perfil',
+    t_profDeleted:'Perfil eliminado',
+    t_profSaved:'guardado en el navegador',
+    t_delimiter:'delimitador',
+    t_strategies:'estrategias',
+    t_numericCols:'columnas numéricas',
+    t_profilesTitle:'GUARDADO EN NAVEGADOR',
+    t_kpisLabel:'KPIs ·',
+  }
+};
+
+function t(key) { return T[LANG][key] || T.en[key] || key; }
+
+function applyLang() {
+  document.documentElement.lang = LANG;
+  // Update all data-i18n elements
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (T[LANG][key]) el.textContent = T[LANG][key];
+  });
+  // Update placeholders
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+    const key = el.getAttribute('data-i18n-ph');
+    if (T[LANG][key]) el.placeholder = T[LANG][key];
+  });
+  // Update lang toggle button
+  const btn = document.getElementById('langBtn');
+  if (btn) btn.textContent = LANG === 'en' ? '🌐 ES' : '🌐 EN';
+  // Update help button
+  const hbtn = document.getElementById('helpBtn');
+  if (hbtn) hbtn.innerHTML = `<span data-i18n="guide">${t('guide')}</span>`;
+  // Re-render dynamic content if it exists
+  if (G.ranked.length) renderTable();
+  if (G.selKpis.length) { buildCfgList(); buildKpiGrid(); }
+  // Update help modal content
+  updateHelpModal();
+  // Persist lang
+  try { if (window.storage) window.storage.set('ranker:lang', LANG); } catch(e) {}
+}
+
+function toggleLang() {
+  LANG = LANG === 'en' ? 'es' : 'en';
+  applyLang();
+}
+
+function updateHelpModal() {
+  const b = document.querySelector('#helpM .modal-body');
+  if (!b) return;
+  b.innerHTML = `
+    <div class="hs"><div class="h3">${t('h_what')}</div><p class="hp">${t('h_what_p')}</p></div>
+    <div class="hs">
+      <div class="h3">${t('h_pct')}</div>
+      <div class="hcode">P(i,k) = rank(value_i) / (n − 1)   [midpoint for ties]\nIf "Less is Better": P = 1 − P\nScore = Σ(P(i,k) × Weight_k) × 100  →  range: 0 – 100</div>
+    </div>
+    <div class="hs">
+      <div class="h3">${t('h_dir')}</div>
+      <p class="hp">${t('h_dir_p')}</p>
+      <div class="hcode">${t('h_dir_code')}</div>
+      <div class="htip">${t('h_dir_tip')}</div>
+    </div>
+    <div class="hs"><div class="h3">${t('h_ses')}</div><p class="hp">${t('h_ses_p')}</p></div>
+    <div class="hs">
+      <div class="h3">${t('h_cfg')}</div>
+      <p class="hp">${t('h_cfg_p')}</p>
+      <div class="hcode">${t('h_cfg_code')}</div>
+      <p class="hp" style="margin-top:8px">${t('h_cfg_p2')}</p>
+    </div>
+    <div class="hs"><div class="h3">${t('h_exp')}</div><p class="hp">${t('h_exp_p')}</p></div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════════ */
+const G = {
+  rows:[], allCols:[], numCols:[], textCols:[],
+  selKpis:[], kpiCfg:{},
+  ranked:[], annotations:{},
+  sortCol:'__score', sortDir:-1,
+  fileName:'',
+};
+
+/* ═══════════════════════════════════════════════════════════
+   SESSION  (window.storage — persists between page visits)
+═══════════════════════════════════════════════════════════ */
+const SESSION_KEY = 'ranker:session_v1';
+
+async function saveSession() {
+  if (!window.storage || !G.rows.length) return;
+  try {
+    await window.storage.set(SESSION_KEY, JSON.stringify({
+      rows: G.rows, allCols: G.allCols, numCols: G.numCols, textCols: G.textCols,
+      selKpis: G.selKpis, kpiCfg: G.kpiCfg,
+      annotations: G.annotations, fileName: G.fileName,
+      savedAt: Date.now(),
+    }));
+  } catch(e){}
+}
+
+async function restoreSession() {
+  if (!window.storage) return false;
+  try {
+    const res = await window.storage.get(SESSION_KEY);
+    if (!res) return false;
+    const d = JSON.parse(res.value);
+    if (!d.rows?.length) return false;
+
+    G.rows=d.rows; G.allCols=d.allCols; G.numCols=d.numCols; G.textCols=d.textCols;
+    G.selKpis=d.selKpis||[]; G.kpiCfg=d.kpiCfg||{};
+    G.annotations=d.annotations||{}; G.fileName=d.fileName||'';
+
+    const age = timeAgo(d.savedAt);
+    document.getElementById('sessionBannerText').innerHTML =
+      `${LANG==='es'?'Sesión restaurada':'Session restored'}: <strong>${G.fileName}</strong> — ${G.rows.length} ${t('t_strategies')} — ${t('sessionBannerOf')} ${age}`;
+    document.getElementById('sessionBanner').style.display = 'flex';
+    document.getElementById('fileInfo').innerHTML =
+      `<span style="color:var(--green)">↩ ${G.fileName}</span> &nbsp;·&nbsp; ${G.rows.length} ${t('t_strategies')} &nbsp;·&nbsp; ${G.numCols.length} ${t('t_numericCols')} <span style="color:var(--dim)">(${t('sessionRestoredOf')})</span>`;
+
+    buildKpiGrid();
+    document.getElementById('kpiSec').style.display = 'block';
+    document.getElementById('cfgMgrSec').style.display = 'block';
+    if (G.selKpis.length) {
+      buildCfgList();
+      document.getElementById('cfgSec').style.display = 'block';
+    }
+    updateStatus();
+    setStep(G.selKpis.length ? 3 : 2);
+    return true;
+  } catch(e) { return false; }
+}
+
+async function clearSession() {
+  if (window.storage) { try { await window.storage.delete(SESSION_KEY); } catch(e){} }
+  document.getElementById('sessionBanner').style.display = 'none';
+  toast(t('t_sessionCleared'), 'info');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   KPI CONFIG PROFILES
+═══════════════════════════════════════════════════════════ */
+const PROF_PREFIX = 'ranker:profile:';
+
+function currentSnapshot(name) {
+  return { name, selKpis:[...G.selKpis], kpiCfg:JSON.parse(JSON.stringify(G.kpiCfg)), savedAt:Date.now() };
+}
+
+function applySnapshot(snap) {
+  if (!G.numCols.length) { toast('Load a CSV first', 'err'); return; }
+  const valid   = (snap.selKpis||[]).filter(k => G.numCols.includes(k));
+  const missing = (snap.selKpis||[]).filter(k => !G.numCols.includes(k));
+  G.selKpis = valid;
+  G.kpiCfg  = {};
+  valid.forEach(k => { G.kpiCfg[k] = snap.kpiCfg[k] || { weight:0, dir:'more' }; });
+  buildKpiGrid();
+  if (valid.length) {
+    buildCfgList();
+    document.getElementById('cfgSec').style.display = 'block';
+    document.getElementById('cfgSec').scrollIntoView({behavior:'smooth'});
+  }
+  updateStatus(); saveSession(); setStep(3);
+  const warn = missing.length ? ` (${missing.length} ${t('t_profMissing')}${missing.join(', ')})` : '';
+  toast(`${t('t_profApplied')} "${snap.name}" ${t('t_profAppliedOf')} ${valid.length} ${t('t_profKpis')}${warn}`, missing.length?'info':'ok');
+}
+
+/* ── download helper: tries blob → data URI → copy modal ── */
+function downloadText(content, filename) {
+  // Method 1: Blob URL
+  try {
+    const mime = filename.endsWith('.json') ? 'application/json' : 'text/csv';
+    const url = URL.createObjectURL(new Blob([content], {type: mime + ';charset=utf-8'}));
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return;
+  } catch(e) {}
+
+  // Method 2: data URI
+  try {
+    const b64 = btoa(unescape(encodeURIComponent(content)));
+    const mime = filename.endsWith('.json') ? 'application/json' : 'text/csv';
+    const a = document.createElement('a');
+    a.href = 'data:' + mime + ';base64,' + b64;
+    a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    return;
+  } catch(e) {}
+
+  // Method 3: copy modal fallback
+  showCopyModal(content, filename);
+}
+
+function showCopyModal(content, filename) {
+  let m = document.getElementById('copyModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'copyModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);z-index:400;display:flex;align-items:center;justify-content:center';
+    m.innerHTML = `
+      <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:12px;width:760px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 0 60px rgba(0,200,240,.1)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border)">
+          <span id="copyModalTitle" style="font-family:var(--sans);font-size:12px;font-weight:700;color:var(--bright);letter-spacing:1px"></span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-accent" onclick="copyModalContent()">📋 COPY ALL</button>
+            <button class="btn" onclick="document.getElementById('copyModal').style.display='none'">✕ CLOSE</button>
+          </div>
+        </div>
+        <div style="padding:8px 12px;background:rgba(0,200,240,.04);border-bottom:1px solid var(--border);font-size:10px;color:var(--amber)">
+          ⚠ Direct download is blocked in this environment. Copy the text below and paste it into a new file on your computer.
+        </div>
+        <textarea id="copyModalTA" readonly
+          style="flex:1;min-height:380px;background:var(--bg3);border:none;color:var(--green);font-family:var(--mono);font-size:10px;padding:14px;resize:none;outline:none;line-height:1.5"></textarea>
+      </div>`;
+    m.addEventListener('click', e => { if (e.target === m) m.style.display = 'none'; });
+    document.body.appendChild(m);
+  }
+  document.getElementById('copyModalTitle').textContent = '💾 SAVE AS: ' + filename;
+  document.getElementById('copyModalTA').value = content;
+  m.style.display = 'flex';
+  // Auto-select
+  setTimeout(() => {
+    const ta = document.getElementById('copyModalTA');
+    ta.focus(); ta.select();
+  }, 100);
+}
+
+function copyModalContent() {
+  const ta = document.getElementById('copyModalTA');
+  ta.select();
+  try {
+    navigator.clipboard.writeText(ta.value).then(() => toast('Copied to clipboard!', 'ok')).catch(() => {
+      document.execCommand('copy');
+      toast('Copied to clipboard!', 'ok');
+    });
+  } catch(e) {
+    document.execCommand('copy');
+    toast('Copied to clipboard!', 'ok');
+  }
+}
+
+/* Save to browser */
+async function saveProfileToStorage() {
+  const name = document.getElementById('cfgNameIn').value.trim();
+  if (!name) { toast(t('t_noName'), 'err'); return; }
+  if (!G.selKpis.length) { toast(t('t_noKpiSel'), 'err'); return; }
+  if (!window.storage) { toast(t('t_noStorage'), 'err'); return; }
+  const key = PROF_PREFIX + name.toLowerCase().replace(/[^a-z0-9_-]/g,'_');
+  try {
+    await window.storage.set(key, JSON.stringify(currentSnapshot(name)));
+    document.getElementById('cfgNameIn').value = '';
+    await renderProfiles();
+    toast(`${t('t_profApplied')} "${name}" ${t('t_profSaved')}`, 'ok');
+  } catch(e) { toast(t('t_storageErr') + e.message, 'err'); }
+}
+
+/* Export to .json file */
+function saveProfileToFile() {
+  const name = document.getElementById('cfgNameIn').value.trim() || ('profile_' + new Date().toISOString().slice(0,10));
+  if (!G.selKpis.length) { toast('No KPIs selected', 'err'); return; }
+  const snap = currentSnapshot(name);
+  const fname = name.replace(/[^a-z0-9_-]/gi,'_') + '_kpi_profile.json';
+  downloadText(JSON.stringify(snap,null,2), fname);
+  toast(t('t_exported') + fname, 'ok');
+}
+
+/* Load from .json file */
+function loadProfileFromFile(e) {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try {
+      const snap = JSON.parse(ev.target.result);
+      if (!snap.selKpis || !snap.kpiCfg) { toast('Invalid profile file', 'err'); return; }
+      applySnapshot(snap);
+    } catch(err) { toast('Parse error: ' + err.message, 'err'); }
+  };
+  r.readAsText(f);
+  e.target.value = '';
+}
+
+/* Render saved profiles list */
+async function renderProfiles() {
+  const el = document.getElementById('savedProfilesList');
+  if (!window.storage) { el.innerHTML = '<div class="no-configs">Browser storage not available.</div>'; return; }
+  try {
+    const res = await window.storage.list(PROF_PREFIX);
+    const keys = res?.keys || [];
+    if (!keys.length) { el.innerHTML = `<div class="no-configs">${t('noProfiles')}</div>`; return; }
+    const profs = [];
+    for (const k of keys) {
+      try { const r = await window.storage.get(k); if (r) profs.push({key:k,...JSON.parse(r.value)}); } catch(e){}
+    }
+    profs.sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));
+    el.innerHTML = profs.map(p => `
+      <div class="saved-cfg-item">
+        <span class="sci-name">${escHtml(p.name)}</span>
+        <span class="sci-meta">${(p.selKpis||[]).length} ${t('t_kpisLabel')} ${timeAgo(p.savedAt)}</span>
+        <button class="btn btn-purple" style="padding:4px 10px;font-size:10px" onclick='applyStoredProfile(${JSON.stringify(p.key)})'>${t('applyBtn')}</button>
+        <button class="btn" style="padding:4px 10px;font-size:10px" onclick='exportStoredProfile(${JSON.stringify(p.key)})'>${t('fileBtn')}</button>
+        <button class="sci-del" onclick='deleteProfile(${JSON.stringify(p.key)})'>✕</button>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<div class="no-configs">${LANG==='es'?'Error al cargar los perfiles.':'Error loading profiles.'}</div>`; }
+}
+
+async function applyStoredProfile(key) {
+  try {
+    const res = await window.storage.get(key);
+    if (!res) { toast(t('t_profNotFound'),'err'); return; }
+    applySnapshot(JSON.parse(res.value));
+  } catch(e) { toast(t('t_profErrApply'),'err'); }
+}
+
+async function exportStoredProfile(key) {
+  try {
+    const res = await window.storage.get(key);
+    if (!res) return;
+    const p = JSON.parse(res.value);
+    const fname = p.name.replace(/[^a-z0-9_-]/gi,'_') + '_kpi_profile.json';
+    downloadText(JSON.stringify(p,null,2), fname);
+  } catch(e){}
+}
+
+async function deleteProfile(key) {
+  if (!window.storage) return;
+  try { await window.storage.delete(key); await renderProfiles(); toast(t('t_profDeleted'),'info'); } catch(e){}
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FILE LOADING
+═══════════════════════════════════════════════════════════ */
+function doDrag(e,on){ e.preventDefault(); document.getElementById('dropZone').classList.toggle('drag',on); }
+function doDrop(e){ e.preventDefault(); document.getElementById('dropZone').classList.remove('drag'); const f=e.dataTransfer.files[0]; if(f)parseFile(f); }
+function loadFile(e){ const f=e.target.files[0]; if(f)parseFile(f); e.target.value=''; }
+
+function parseFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const raw = ev.target.result;
+    const fl  = raw.split('\n')[0];
+    const semis=(fl.match(/;/g)||[]).length, commas=(fl.match(/,/g)||[]).length, tabs=(fl.match(/\t/g)||[]).length;
+    const delim = semis>=commas&&semis>=tabs?';':tabs>=commas?'\t':',';
+
+    Papa.parse(raw,{
+      header:true, delimiter:delim, skipEmptyLines:true, dynamicTyping:true,
+      complete: res => {
+        if (!res.data.length) { toast(t('t_fileEmpty'),'err'); return; }
+        G.rows=res.data; G.allCols=Object.keys(res.data[0]); G.fileName=file.name;
+        G.numCols=[]; G.textCols=[];
+        G.allCols.forEach(col=>{
+          const vals=res.data.map(r=>r[col]).filter(v=>v!==null&&v!=='');
+          const n=vals.filter(v=>typeof v==='number'||(!isNaN(parseFloat(v))&&String(v).trim()!=='')).length;
+          (n/vals.length>=0.5?G.numCols:G.textCols).push(col);
+        });
+
+        // Keep existing config where column names still match
+        G.selKpis = G.selKpis.filter(k=>G.numCols.includes(k));
+        Object.keys(G.kpiCfg).forEach(k=>{ if(!G.numCols.includes(k)) delete G.kpiCfg[k]; });
+        G.ranked=[]; G.annotations={};
+
+        buildKpiGrid();
+        document.getElementById('kpiSec').style.display='block';
+        document.getElementById('cfgSec').style.display=G.selKpis.length?'block':'none';
+        document.getElementById('cfgMgrSec').style.display='block';
+        document.getElementById('resSec').style.display='none';
+        document.getElementById('exportBtn').disabled=true;
+        document.getElementById('sessionBanner').style.display='none';
+        document.getElementById('fileInfo').innerHTML=
+          `<span style="color:var(--green)">✓ ${file.name}</span> &nbsp;·&nbsp; ${G.rows.length} ${t('t_strategies')} &nbsp;·&nbsp; ${G.numCols.length} ${t('t_numericCols')} &nbsp;·&nbsp; ${t('t_delimiter')}: <span style="color:var(--accent)">"${delim==='\t'?'TAB':delim}"</span>`;
+        if (G.selKpis.length) buildCfgList();
+        updateStatus(); setStep(G.selKpis.length?3:2);
+        renderProfiles(); saveSession();
+        toast(`${t('t_loaded').split(',')[0].trim()} (${G.rows.length} ${t('t_strategies')}, ${G.numCols.length} ${t('t_numericCols')})`,'ok');
+      },
+      error: e=>toast(t('t_parseError')+e.message,'err'),
+    });
+  };
+  reader.readAsText(file);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   KPI GRID
+═══════════════════════════════════════════════════════════ */
+function buildKpiGrid() {
+  document.getElementById('kpiGrid').innerHTML = G.numCols.map(col=>{
+    const sample=G.rows.slice(0,5).map(r=>parseFloat(r[col])).filter(v=>!isNaN(v));
+    const sv=sample.length?fmtNum(sample[Math.floor(sample.length/2)]):'—';
+    return `<div class="kpi-card ${G.selKpis.includes(col)?'sel':''}" id="kc_${esc(col)}" onclick="togKpi('${esc2(col)}')" title="${col}">
+      <div class="kn">${col}</div><div class="kv">e.g. ${sv}</div>
+    </div>`;
+  }).join('');
+}
+
+function togKpi(col) {
+  const el=document.getElementById('kc_'+esc(col));
+  if (G.selKpis.includes(col)) { G.selKpis=G.selKpis.filter(k=>k!==col); el&&el.classList.remove('sel'); }
+  else { G.selKpis.push(col); el&&el.classList.add('sel'); }
+  updateStatus(); saveSession();
+}
+function kAll()  { G.numCols.forEach(c=>{ if(!G.selKpis.includes(c)) G.selKpis.push(c); }); buildKpiGrid(); updateStatus(); saveSession(); }
+function kNone() { G.selKpis=[]; buildKpiGrid(); updateStatus(); saveSession(); }
+
+function applyKpis() {
+  if (!G.selKpis.length) { toast(t('t_noKpi'),'err'); return; }
+  G.selKpis.forEach(col=>{
+    if (!G.kpiCfg[col]) {
+      const lo=col.toLowerCase();
+      const less=lo.includes('loss')||lo.includes('drawdown')||lo.includes('dd')||lo.includes('consec')||lo.includes('losing')||lo.includes('slippage')||lo.includes('mae');
+      G.kpiCfg[col]={weight:0,dir:less?'less':'more'};
+    }
+  });
+  buildCfgList();
+  document.getElementById('cfgSec').style.display='block';
+  document.getElementById('cfgSec').scrollIntoView({behavior:'smooth'});
+  setStep(3); saveSession();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   WEIGHT CONFIG
+═══════════════════════════════════════════════════════════ */
+function buildCfgList() {
+  document.getElementById('cfgList').innerHTML = G.selKpis.map(col=>{
+    const cfg=G.kpiCfg[col], uid=esc(col);
+    return `<div class="cfg-row">
+      <div class="cfg-n" title="${col}">${col}</div>
+      <div class="w-wrap">
+        <input class="w-in" type="number" min="0" max="100" step="0.5" value="${cfg.weight}" id="wi_${uid}" oninput="onWi('${esc2(col)}',this.value)"/>
+        <span class="w-u">%</span>
+      </div>
+      <div class="dir-tog">
+        <button class="dir-b ${cfg.dir==='more'?'up':''}" onclick="setDir('${esc2(col)}','more',this.parentElement)">▲ MORE</button>
+        <button class="dir-b ${cfg.dir==='less'?'dn':''}" onclick="setDir('${esc2(col)}','less',this.parentElement)">▼ LESS</button>
+      </div>
+      <button class="del-b" onclick="delKpi('${esc2(col)}')">✕</button>
+    </div>`;
+  }).join('');
+  updateWBar();
+}
+
+function setDir(col,dir,tog){
+  G.kpiCfg[col].dir=dir;
+  tog.children[0].className='dir-b'+(dir==='more'?' up':'');
+  tog.children[1].className='dir-b'+(dir==='less'?' dn':'');
+  saveSession();
+}
+function onWi(col,val){ G.kpiCfg[col].weight=parseFloat(val)||0; updateWBar(); updateStatus(); saveSession(); }
+function delKpi(col){ G.selKpis=G.selKpis.filter(k=>k!==col); delete G.kpiCfg[col]; buildCfgList(); buildKpiGrid(); updateStatus(); saveSession(); }
+
+function updateWBar(){
+  const tot=G.selKpis.reduce((s,k)=>s+(G.kpiCfg[k]?.weight||0),0);
+  const ok=Math.abs(tot-100)<0.5;
+  const el=document.getElementById('wbV'), bar=document.getElementById('wbF');
+  el.textContent=tot.toFixed(1)+'%';
+  el.style.color=ok?'var(--green)':tot>100?'var(--red)':'var(--amber)';
+  bar.style.width=Math.min(tot,100)+'%';
+  bar.style.background=ok?'var(--green)':tot>100?'var(--red)':'var(--amber)';
+}
+
+function autoW(){
+  const n=G.selKpis.length; if(!n)return;
+  const w=parseFloat((100/n).toFixed(1)), rem=parseFloat((100-w*n).toFixed(1));
+  G.selKpis.forEach((col,i)=>{
+    const v=parseFloat((w+(i===0?rem:0)).toFixed(1));
+    G.kpiCfg[col].weight=v;
+    const inp=document.getElementById('wi_'+esc(col)); if(inp)inp.value=v;
+  });
+  updateWBar(); updateStatus(); saveSession();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCORING ENGINE
+═══════════════════════════════════════════════════════════ */
+function pctRank(sorted,val){
+  let below=0,eq=0;
+  for(const v of sorted){ if(v<val)below++; else if(v===val)eq++; }
+  if(sorted.length<=1)return 0.5;
+  return(below+eq/2)/(sorted.length-1);
+}
+
+function doCalc(){
+  const tot=G.selKpis.reduce((s,k)=>s+(G.kpiCfg[k]?.weight||0),0);
+  if(Math.abs(tot-100)>0.5){ toast(`${t('t_weightErr')} ${tot.toFixed(1)}% ${t('t_weightMust')}`,'err'); return; }
+  if(G.rows.length<2){ toast(t('t_noRows'),'err'); return; }
+
+  const sorted={};
+  G.selKpis.forEach(col=>{
+    sorted[col]=G.rows.map(r=>parseFloat(r[col])).filter(v=>!isNaN(v)).sort((a,b)=>a-b);
+  });
+
+  G.ranked=G.rows.map((row,idx)=>{
+    let score=0; const pcts={};
+    G.selKpis.forEach(col=>{
+      const val=parseFloat(row[col]); if(isNaN(val))return;
+      let p=pctRank(sorted[col],val);
+      if(G.kpiCfg[col].dir==='less')p=1-p;
+      pcts[col]=p; score+=p*(G.kpiCfg[col].weight/100);
+    });
+    return{...row,__idx:idx,__score:score*100,__pcts:pcts};
+  });
+
+  G.ranked.sort((a,b)=>b.__score-a.__score);
+  G.sortCol='__score'; G.sortDir=-1;
+  document.getElementById('resSec').style.display='block';
+  renderTable();
+  document.getElementById('resSec').scrollIntoView({behavior:'smooth'});
+  document.getElementById('exportBtn').disabled=false;
+  document.getElementById('s5').textContent=`✓ ${LANG==='es'?'RANKING':'RANKED'} ${G.ranked.length} ${t('t_strategies').toUpperCase()}`;
+  setStep(4); saveSession();
+  toast(`${t('t_ranked')} ${G.ranked.length} ${t('t_rankedOf')}`,'ok');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TABLE RENDER
+═══════════════════════════════════════════════════════════ */
+function renderTable(){
+  const q=(document.getElementById('searchIn')?.value||'').toLowerCase().trim();
+  let rows=G.ranked;
+  if(q) rows=rows.filter(r=>G.textCols.some(c=>String(r[c]??'').toLowerCase().includes(q)));
+
+  const sortedRows=[...rows].sort((a,b)=>{
+    let av,bv;
+    if(G.sortCol==='__score'){av=a.__score;bv=b.__score;}
+    else if(G.sortCol==='__rank_orig'){av=G.ranked.indexOf(a);bv=G.ranked.indexOf(b);}
+    else{av=parseFloat(a[G.sortCol]);bv=parseFloat(b[G.sortCol]);if(isNaN(av))av=-Infinity;if(isNaN(bv))bv=-Infinity;}
+    return(av<bv?-1:av>bv?1:0)*G.sortDir;
+  });
+
+  document.getElementById('rowInfo').textContent=`${t('showingLabel')} ${sortedRows.length} ${t('ofLabel')} ${G.ranked.length} ${t('t_strategies').toUpperCase()}`;
+  const si=col=>G.sortCol===col?(G.sortDir===-1?' ↓':' ↑'):' ⇅';
+  const kC=G.selKpis, oN=G.numCols.filter(c=>!kC.includes(c)), dC=[...G.textCols,...kC,...oN];
+
+  document.getElementById('tblWrap').innerHTML=`
+  <div class="tbl-wrap"><table>
+    <thead><tr>
+      <th onclick="srt('__rank_orig')">RANK${si('__rank_orig')}</th>
+      <th onclick="srt('__score')" class="${G.sortCol==='__score'?'sorted':''}">SCORE${si('__score')}</th>
+      ${dC.map(c=>`<th onclick="srt('${esc2(c)}')" class="${G.sortCol===c?'sorted':''}" style="${kC.includes(c)?'color:var(--accent);opacity:.85':''}">${c}${si(c)}</th>`).join('')}
+      <th>NOTE</th>
+    </tr></thead>
+    <tbody>
+      ${sortedRows.map(row=>{
+        const oR=G.ranked.indexOf(row)+1,sc=row.__score;
+        const cc=sc>=70?'var(--green)':sc>=45?'var(--amber)':'var(--red)';
+        const rc=oR===1?'r1':oR===2?'r2':oR===3?'r3':'rn';
+        const ann=G.annotations[row.__idx]||'';
+        return`<tr>
+          <td><span class="rank-b ${rc}">${oR}</span></td>
+          <td><div class="score-wrap">
+            <span style="color:${cc};font-weight:700;font-size:12px;font-family:var(--sans)">${sc.toFixed(2)}</span>
+            <div class="score-track"><div class="score-fill" style="width:${sc}%;background:${cc}"></div></div>
+          </div></td>
+          ${dC.map(c=>{
+            const raw=row[c],nv=parseFloat(raw),isK=kC.includes(c);
+            const pt=isK&&row.__pcts[c]!==undefined?` title="percentile: ${(row.__pcts[c]*100).toFixed(1)}%"`:'';
+            if(typeof raw==='number'||(!isNaN(nv)&&raw!==null&&raw!==''))
+              return`<td class="${nv<0?'neg':''}"${pt}>${fmtNum(nv)}</td>`;
+            return`<td${pt}>${raw??'—'}</td>`;
+          }).join('')}
+          <td><input class="ann-in" type="text" placeholder="add note…" value="${escHtml(ann)}"
+            oninput="G.annotations[${row.__idx}]=this.value;saveSession()"/></td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>
+  <div class="note" style="margin-top:9px">HOVER KPI COLUMN FOR PERCENTILE · KPI HEADERS IN CYAN · CLICK HEADER TO SORT</div>`;
+}
+
+function srt(col){
+  if(G.sortCol===col)G.sortDir*=-1; else{G.sortCol=col;G.sortDir=col==='__score'?-1:1;}
+  renderTable();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EXPORT CSV
+═══════════════════════════════════════════════════════════ */
+function doExport(){
+  if(!G.ranked.length)return;
+  const out=[...G.ranked].sort((a,b)=>b.__score-a.__score).map((row,ri)=>{
+    const r={__RANK:ri+1,__SCORE:+row.__score.toFixed(4)};
+    G.allCols.forEach(c=>r[c]=row[c]);
+    G.selKpis.forEach(c=>{r['__PCT_'+c]=row.__pcts[c]!==undefined?+((row.__pcts[c]*100).toFixed(2)):'';});
+    r.__NOTE=G.annotations[row.__idx]||'';
+    return r;
+  });
+  downloadText(Papa.unparse(out), `ranked_strategies_${new Date().toISOString().slice(0,10)}.csv`);
+  toast(t('t_csvExported'),'ok');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UI HELPERS
+═══════════════════════════════════════════════════════════ */
+function tog(id,hdr){
+  document.getElementById(id).classList.toggle('collapsed');
+  hdr.querySelector('.chevron').classList.toggle('up');
+}
+function updateStatus(){
+  const k=G.selKpis.length,w=G.selKpis.reduce((s,c)=>s+(G.kpiCfg[c]?.weight||0),0),ok=Math.abs(w-100)<0.5&&k>0;
+  document.getElementById('d1').className='sdot'+(G.rows.length?' on':'');
+  document.getElementById('d2').className='sdot'+(G.numCols.length?' on':'');
+  document.getElementById('d3').className='sdot'+(k?' on':'');
+  document.getElementById('d4').className='sdot'+(ok?' on':'');
+  document.getElementById('s1').textContent=G.rows.length;
+  document.getElementById('s2').textContent=G.numCols.length;
+  document.getElementById('s3').textContent=k;
+  document.getElementById('s4').textContent=w.toFixed(1)+'%';
+}
+function setStep(n){ for(let i=1;i<=4;i++) document.getElementById('stp'+i).className='step'+(i<n?' done':i===n?' active':''); }
+function openHelp(){ document.getElementById('helpM').classList.add('open'); }
+function closeHelp(){ document.getElementById('helpM').classList.remove('open'); }
+document.getElementById('helpM').addEventListener('click',e=>{ if(e.target===e.currentTarget)closeHelp(); });
+let _tt;
+function toast(msg,type='ok'){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className='toast '+type+' show';
+  clearTimeout(_tt); _tt=setTimeout(()=>el.classList.remove('show'),3400);
+}
+function timeAgo(ts){
+  const m=Math.round((Date.now()-ts)/60000);
+  if(m<1)return'just now'; if(m<60)return m+'m ago';
+  if(m<1440)return Math.round(m/60)+'h ago'; return Math.round(m/1440)+'d ago';
+}
+function fmtNum(v){
+  if(v===null||v===undefined||isNaN(v))return'—';
+  if(Number.isInteger(v))return v.toLocaleString('en-US');
+  if(Math.abs(v)>=1000)return v.toLocaleString('en-US',{maximumFractionDigits:0});
+  if(Math.abs(v)>=100)return v.toFixed(1);
+  return v.toFixed(2);
+}
+function esc(s){ return String(s).replace(/[^a-zA-Z0-9]/g,'_'); }
+function esc2(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ═══════════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════════ */
+(async()=>{
+  // Restore language preference first
+  if (window.storage) {
+    try {
+      const lr = await window.storage.get('ranker:lang');
+      if (lr && (lr.value === 'es' || lr.value === 'en')) LANG = lr.value;
+    } catch(e) {}
+  }
+  applyLang();
+  const ok = await restoreSession();
+  if (ok) {
+    await renderProfiles();
+    toast(t('sessionRestored'),'info');
+  }
+})();
+</script>
+</body>
+</html>
