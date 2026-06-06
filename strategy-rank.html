@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Strategy Ranker // DATABANK</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <!-- avoid 404 request when running via simple server -->
+  <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+  <!-- load local JSZip first; parseSqxFile will still dynamically load if needed
+       adding a version query parameter prevents browsers from serving a stale truncated copy
+       (clear cache or press Ctrl+F5 if you still see the earlier syntax error) -->
+  <script src="libs/jszip.min.js?v=3.10.1"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Syne:wght@600;700;800&display=swap');
 
@@ -238,6 +244,7 @@ td{padding:7px 12px;white-space:nowrap;color:var(--text)}
     <button class="btn" id="langBtn" onclick="toggleLang()">🌐 ES</button>
     <button class="btn" id="helpBtn" onclick="openHelp()"><span data-i18n="guide">? GUIDE</span></button>
     <button class="btn btn-green" id="exportBtn" onclick="doExport()" disabled>↓ <span data-i18n="exportCsv">EXPORT CSV</span></button>
+    <button class="btn btn-purple" id="corrBtn" onclick="showCorrelation()">🔗 <span>CORRELATION</span></button>
   </div>
 </header>
 
@@ -367,6 +374,30 @@ td{padding:7px 12px;white-space:nowrap;color:var(--text)}
 
 </div><!-- /wrap -->
 
+  <!-- CORRELATION ANALYSIS -->
+  <div class="sec" id="corrSec" style="display:none">
+    <div class="sec-hdr" onclick="tog('corrBody',this)">
+      <div class="sec-title"><div class="pulse-p"></div><span>CORRELATION ANALYSIS</span></div>
+      <span class="chevron">▾</span>
+    </div>
+    <div class="sec-body" id="corrBody">
+      <div style="margin-bottom:10px">
+        <input type="file" id="sqxIn" accept=".sqx" multiple onchange="loadSqxFiles(event)"/>
+        <span class="note" id="sqxFileInfo" style="margin-left:8px;font-size:11px;color:var(--dim)" data-i18n="t_sqxNoFiles">no files selected</span>
+      </div>
+      <div id="corrOptions" style="margin-bottom:12px">
+        <label>Threshold: <input type="number" id="corrThreshold" value="0.6" step="0.05" min="0" max="1" style="width:60px"/></label>
+        <label style="margin-left:12px"><select id="corrType"><option value="combined">Combined</option><option value="entry">Entry-only</option><option value="price">Price-only</option></select></label>
+        <label style="margin-left:12px"><span>KPI filter:</span>
+          <select id="corrKpis" multiple size="3" style="width:160px;vertical-align:middle;margin-left:4px"></select>
+        </label>
+        <span style="margin-left:12px;font-size:11px;color:var(--dim)">parameters always included</span>
+        <button class="btn btn-accent" onclick="runCorrelation()" style="margin-left:12px">Run</button>
+      </div>
+      <div id="corrResults"></div>
+    </div>
+  </div>
+
 <!-- HELP MODAL -->
 <div class="overlay" id="helpM">
   <div class="modal">
@@ -481,6 +512,10 @@ const T = {
     // toasts
     t_fileEmpty:'File appears empty',
     t_parseError:'Parse error: ',
+    t_sqxNoFiles:'no files selected',
+    t_sqxFilesSelected:'files selected',
+    t_sqxParseError:'Failed to parse ',
+    t_noStrategies:'No strategies loaded',
     t_loaded:'strategies,  numeric columns',
     t_noKpi:'Select at least 1 KPI',
     t_noRows:'Need at least 2 rows',
@@ -562,6 +597,10 @@ const T = {
     h_exp_p:'EXPORTAR CSV descarga la tabla de ranking con todas las columnas originales más __RANK, __SCORE, percentiles por KPI (__PCT_…) y las anotaciones que hayas escrito.',
     t_fileEmpty:'El archivo parece estar vacío',
     t_parseError:'Error de parseo: ',
+    t_sqxNoFiles:'no hay archivos seleccionados',
+    t_sqxFilesSelected:'archivos seleccionados',
+    t_sqxParseError:'Error al analizar ',
+    t_noStrategies:'No se cargaron estrategias',
     t_loaded:'estrategias, columnas numéricas',
     t_noKpi:'Selecciona al menos 1 KPI',
     t_noRows:'Se necesitan al menos 2 filas',
@@ -1232,6 +1271,376 @@ function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
     toast(t('sessionRestored'),'info');
   }
 })();
+</script>
+
+<script>
+  // embedded parser and analysis logic (adapted for browser)
+  // minimal versions of functions from src modules
+  // helper: load external script and reject with a readable Error
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector('script[src="' + src + '"]')) return resolve();
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('Failed to load script: ' + src));
+      document.head.appendChild(s);
+    });
+  }
+  async function parseSqxFile(buffer) {
+    // use JSZip library loaded via Node? We don't have it in browser by default
+    // For simplicity we load JSZip via CDN at runtime if not present
+    // Prefer local copies in ./libs/ to avoid CDN/network issues; fall back to CDN if missing
+    if (typeof JSZip === 'undefined') {
+      try {
+        // use version query to bust cache, same as static <script> tag
+        await loadScript('libs/jszip.min.js?v=3.10.1');
+      } catch (errLocal) {
+        try {
+          await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js');
+        } catch (errCdn) {
+          throw new Error('Could not load JSZip (local or CDN): ' + errCdn.message);
+        }
+      }
+    }
+    // xml2js not required in-browser; using DOMParser fallback
+    const zip = await JSZip.loadAsync(buffer);
+    const xmlEntry = zip.file('strategy_Portfolio.xml');
+    if (!xmlEntry) {
+      throw new Error('strategy_Portfolio.xml not found in SQX archive');
+    }
+    const xml = await xmlEntry.async('string');
+    // Parse XML to a JS object using DOMParser (avoids relying on xml2js global)
+    function xmlNodeToObj(node) {
+      if (!node) return null;
+      // text node
+      if (node.nodeType === Node.TEXT_NODE) {
+        return node.nodeValue.trim();
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return null;
+      const obj = {};
+      // attributes
+      if (node.attributes && node.attributes.length) {
+        obj.$ = {};
+        for (let i = 0; i < node.attributes.length; i++) {
+          const a = node.attributes[i];
+          obj.$[a.name] = a.value;
+        }
+      }
+      // child elements
+      const childElems = Array.from(node.childNodes).filter(n => n.nodeType === Node.ELEMENT_NODE);
+      const textNodes = Array.from(node.childNodes).filter(n => n.nodeType === Node.TEXT_NODE && n.nodeValue.trim());
+      if (childElems.length === 0 && textNodes.length === 1) {
+        obj._ = textNodes[0].nodeValue.trim();
+        return obj;
+      }
+      childElems.forEach(child => {
+        const name = child.tagName;
+        const childObj = xmlNodeToObj(child);
+        if (obj[name] !== undefined) {
+          if (!Array.isArray(obj[name])) obj[name] = [obj[name]];
+          obj[name].push(childObj);
+        } else {
+          obj[name] = childObj;
+        }
+      });
+      return obj;
+    }
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'application/xml');
+    const parseErr = doc.querySelector('parsererror');
+    if (parseErr) throw new Error('XML parse error');
+    const root = xmlNodeToObj(doc.documentElement);
+    const strategy = { strategyId:'', name:'', entryIndicators:[], priceIndicators:[], variableMap:{} };
+    if (root && root.StrategyFile && root.StrategyFile.Strategy) {
+      const strat = root.StrategyFile.Strategy;
+      if (strat.$ && strat.$.name) strategy.name = strat.$.name;
+    }
+    function addIndicator(ind,ctx){ if(ctx==='entry')strategy.entryIndicators.push(ind); else if(ctx==='price')strategy.priceIndicators.push(ind); }
+    function buildIndicatorFromItem(item){const attrs=item.$||{};const ind={id:attrs.id||null,key:attrs.key||null,name:attrs.name||attrs.key||null,mI:attrs.mI||null,returnType:attrs.returnType||null,categoryType:attrs.categoryType||null,params:[]}; if(item.Param){const params=Array.isArray(item.Param)?item.Param:[item.Param];params.forEach(p=>{const pa=p.$||{};ind.params.push({key:pa.key||null,value:p._!==undefined?p._:null,attrs:pa});});}return ind;}
+    function processItem(item,path){const attrs=item.$||{};if(attrs.mI){const indicator=buildIndicatorFromItem(item);const isEntry=path.includes('If')||path.includes('signals')||attrs.returnType==='boolean';addIndicator(indicator,isEntry?'entry':'price');}if(attrs.key==='BooleanVariable'&&item.Param){const p=Array.isArray(item.Param)?item.Param[0]:item.Param;if(p&&p.$&&p.$.variable==='true'&&p._){strategy.variableMap[p._]=strategy.variableMap[p._]||{reference:true,id:p._};}}}
+    function traverse(node,path=[]){if(!node||typeof node!=='object')return; if(Array.isArray(node)){node.forEach(n=>traverse(n,path));return;} for(const key of Object.keys(node)){const child=node[key];if(key==='signal'&&child&&typeof child==='object'){const entries=Array.isArray(child)?child:[child];entries.forEach(sig=>{const id=sig.$&&sig.$.variable; if(id&&sig.Item){const indicator=buildIndicatorFromItem(sig.Item);if(indicator){indicator.id=id;strategy.variableMap[id]=indicator;addIndicator(indicator,'entry');}}});}if(key==='Item'){const entries=Array.isArray(child)?child:[child];entries.forEach(item=>processItem(item,path));}traverse(child,path.concat(key));}};
+    traverse(root);return strategy;
+  }
+
+  // heatmap visualization helpers
+  function getHeatColor(sim){if(sim===1)return'rgb(100,100,100)';const r=Math.round(255),g=Math.round(255*(1-sim*0.7)),b=Math.round(255*(1-sim*0.7));return`rgb(${r},${g},${b})`;}
+  function escapeHtml(txt){const d=document.createElement('div');d.textContent=txt;return d.innerHTML;}
+  function truncate(txt,len){return txt.length>len?txt.substring(0,len-1)+'…':txt;}
+  function generateAnalysisSummary(clusters,mat,strats){const n=strats.length;let total=0,cnt=0;for(let i=0;i<n;i++){for(let j=i+1;j<n;j++){if(mat[i][j]>0){total+=mat[i][j];cnt++;}}}const avg=cnt>0?total/cnt:0;return{totalStrategies:n,clustersFound:clusters.length,strategyToKeep:clusters.length,strategyToRemove:n-clusters.length,redundancyPercent:((n-clusters.length)/n*100).toFixed(1),averageCorrelation:avg.toFixed(3)};}
+  function createAnalysisPanel(clusters,mat,strats,opts={}){const{threshold=0.6}=opts;const sum=generateAnalysisSummary(clusters,mat,strats);const pairs=[];for(let i=0;i<strats.length;i++){for(let j=i+1;j<strats.length;j++){const sim=mat[i][j];if(sim>=threshold)pairs.push({idx1:i,idx2:j,sim,name1:strats[i].name||strats[i].fileName||`#${i}`,name2:strats[j].name||strats[j].fileName||`#${j}`})}}pairs.sort((a,b)=>b.sim-a.sim);let r='';clusters.forEach((cl,idx)=>{const rep=strats[cl.representative].name||strats[cl.representative].fileName||`#${cl.representative}`;r+=`Cluster ${idx+1}: Keep "${rep}" | Remove: ${cl.redundant.map(i=>strats[i].name||strats[i].fileName||`#${i}`).join(', ')}\n`;});let pairsHTML='';pairs.forEach(p=>{const p1=escapeHtml(p.name1);const p2=escapeHtml(p.name2);const pct=(p.sim*100).toFixed(1);const bg=getHeatColor(p.sim);pairsHTML+=`<tr class="corr-pair-row"><td style="padding:6px;border-right:1px solid var(--border);cursor:pointer" title="${p1}">${truncate(p1,30)}</td><td style="padding:6px;border-right:1px solid var(--border);cursor:pointer" title="${p2}">${truncate(p2,30)}</td><td style="padding:6px;text-align:center;background:${bg};color:${pct>70?'#fff':'#000'};border-radius:3px;font-weight:bold">${pct}%</td></tr>`;});let clusterHTML='';clusters.forEach((cl,idx)=>{const rep=escapeHtml(strats[cl.representative].name||strats[cl.representative].fileName||`#${cl.representative}`);clusterHTML+=`<tr><td style="padding:6px;text-align:center;border-right:1px solid var(--border);font-weight:bold">${idx+1}</td><td style="padding:6px;text-align:center;border-right:1px solid var(--border)">${cl.cluster.length}</td><td style="padding:6px;border-right:1px solid var(--border);cursor:pointer;color:var(--accent)" title="${rep}">${truncate(rep,35)}</td><td style="padding:6px;text-align:center;background:rgba(255,100,100,0.1);border-radius:3px">${cl.redundant.length}</td></tr>`;});return`<div class="analysis-panel" style="font-family:monospace;font-size:12px"><div class="summary-stats" style="background:var(--bg-darker);padding:12px;border-radius:4px;margin-bottom:16px"><h3 style="margin:0 0 12px 0;color:var(--accent)">📊 Analysis Summary</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><div style="color:var(--dim);font-size:11px">Total Strategies</div><div style="font-size:16px;font-weight:bold;color:var(--accent)">${sum.totalStrategies}</div></div><div><div style="color:var(--dim);font-size:11px">Clusters Found</div><div style="font-size:16px;font-weight:bold;color:var(--accent)">${sum.clustersFound}</div></div><div><div style="color:var(--dim);font-size:11px">Keep (representatives)</div><div style="font-size:16px;font-weight:bold;color:#4fa">${sum.strategyToKeep}</div></div><div><div style="color:var(--dim);font-size:11px">Remove (redundant)</div><div style="font-size:16px;font-weight:bold;color:#f55">${sum.strategyToRemove}</div></div><div><div style="color:var(--dim);font-size:11px">Redundancy Rate</div><div style="font-size:16px;font-weight:bold;color:#fa5">${sum.redundancyPercent}%</div></div><div><div style="color:var(--dim);font-size:11px">Avg Correlation</div><div style="font-size:16px;font-weight:bold;color:var(--accent)">${sum.averageCorrelation}</div></div></div></div><div style="margin-bottom:16px"><h3 style="margin:0 0 8px 0">🎯 Clusters (${clusters.length})</h3><div style="overflow-y:auto;max-height:300px;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead style="position:sticky;top:0;background:var(--bg-darker);border-bottom:1px solid var(--border)"><tr><th style="padding:6px;text-align:center;border-right:1px solid var(--border);width:40px">ID</th><th style="padding:6px;text-align:center;border-right:1px solid var(--border);width:50px">Size</th><th style="padding:6px;text-align:left;border-right:1px solid var(--border)">Representative</th><th style="padding:6px;text-align:center;width:60px">Redundant</th></tr></thead><tbody>${clusterHTML}</tbody></table></div></div><div style="margin-bottom:16px"><h3 style="margin:0 0 8px 0">🔗 Correlated Pairs Ranked (${pairs.length})</h3><div style="overflow-y:auto;max-height:350px;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead style="position:sticky;top:0;background:var(--bg-darker);border-bottom:1px solid var(--border)"><tr><th style="padding:6px;text-align:left;border-right:1px solid var(--border)">Strategy 1</th><th style="padding:6px;text-align:left;border-right:1px solid var(--border)">Strategy 2</th><th style="padding:6px;text-align:center;width:80px">Similarity</th></tr></thead><tbody id="corrPairBody">${pairsHTML}</tbody></table></div></div><div style="margin-top:16px;padding:12px;background:var(--bg-darker);border-radius:4px"><h4 style="margin:0 0 8px 0">📥 Export</h4><button class="btn btn-small" onclick="exportCorrelationCSV('${btoa(JSON.stringify(pairs))}')">CSV (pairs)</button><button class="btn btn-small" onclick="exportClusterJSON('${btoa(JSON.stringify(clusters))}')">JSON (clusters)</button><button class="btn btn-small" onclick="copyToClipboard(document.getElementById('clusterList').textContent)">Copy Clusters</button></div><div id="clusterList" style="display:none">${r}</div></div>`;}
+
+  // analysis helpers (jaccard, resolve, collect, correlate, cluster, graph utils)
+  function jaccard(a,b){const A=new Set(a),B=new Set(b);const inter=new Set([...A].filter(x=>B.has(x)));const uni=new Set([...A,...B]);return uni.size?inter.size/uni.size:0;}
+  function resolveReferences(ind,strat,visited=new Set()){if(ind&&ind.reference&&ind.id){if(visited.has(ind.id))return[];visited.add(ind.id);const r=strat.variableMap[ind.id];if(r)return resolveReferences(r,strat,visited);return [];}if(ind&&ind.id&&strat.variableMap[ind.id]&&strat.variableMap[ind.id]!==ind){if(visited.has(ind.id))return[];visited.add(ind.id);return resolveReferences(strat.variableMap[ind.id],strat,visited);}return [ind];}
+  function formatIndicator(ind,includeParams=true){if(!ind)return'';let base=ind.mI||ind.name||ind.key||'';if(includeParams&&ind.params&&ind.params.length){const sorted=[...ind.params].map(p=>`${p.key}:${p.value}`).sort().join('|');base+=`|${sorted}`;}return base;}
+  function collectIndicators(strat,type='combined',includeParams=true){let list=[]; if(type==='entry'||type==='combined')list=list.concat(strat.entryIndicators||[]); if(type==='price'||type==='combined')list=list.concat(strat.priceIndicators||[]); const res=[]; list.forEach(ind=>{const rr=resolveReferences(ind,strat,new Set());rr.forEach(r=>{res.push(formatIndicator(r,includeParams));});});return new Set(res.filter(x=>x));}
+  function correlateStrategies(strats,opts={}){const{type='combined',threshold=0.6,includeParams=true}=opts;const n=strats.length;const mat=Array.from({length:n},()=>Array(n).fill(0));for(let i=0;i<n;i++){for(let j=i+1;j<n;j++){const A=collectIndicators(strats[i],type,includeParams);const B=collectIndicators(strats[j],type,includeParams);const sim=jaccard(A,B);mat[i][j]=mat[j][i]=sim;}mat[i][i]=1;}return{matrix:mat,threshold};}
+  // cluster strategies based on correlation threshold and optional KPI preferences
+  function clusterStrategies(mat, strats, threshold=0.6, options={}){
+    const { preferredKpis=[] } = options;
+    const n=mat.length;
+    const visited=new Array(n).fill(false);
+    const clusters=[];
+    function dfs(i,cl){
+      visited[i]=true;
+      cl.push(i);
+      for(let j=0;j<n;j++){
+        if(!visited[j]&&mat[i][j]>=threshold) dfs(j,cl);
+      }
+    }
+    for(let i=0;i<n;i++){
+      if(!visited[i]){
+        const cl=[];
+        dfs(i,cl);
+        clusters.push(cl);
+      }
+    }
+    // choose representative; prefer strategies containing more of the selected KPIs
+    // fall back to total indicator count, with a tie-breaker when preferredKpis is used.
+    return clusters.map(cluster=>{
+      let repIndex = cluster[0];
+      let bestScore = -1;
+      cluster.forEach(idx=>{
+        const indSet = collectIndicators(strats[idx],'combined',true);
+        let score;
+        if(preferredKpis && preferredKpis.length){
+          score = preferredKpis.reduce((sum,k)=> sum + (indSet.has(k)?1:0), 0);
+        } else {
+          score = indSet.size;
+        }
+        if(score > bestScore){
+          bestScore = score;
+          repIndex = idx;
+        } else if(score === bestScore && preferredKpis && preferredKpis.length){
+          // tie-break by total indicator count
+          const curCount = indSet.size;
+          const bestCount = collectIndicators(strats[repIndex],'combined',true).size;
+          if(curCount > bestCount){
+            repIndex = idx;
+          }
+        }
+      });
+      const redundant = cluster.filter(i=>i!==repIndex);
+      return {cluster,representative:repIndex,redundant};
+    });
+  }
+  function buildNetworkGraph(clusters,mat,strats){const n=mat.length;const nodes=strats.map((s,i)=>{
+    const label = s.name || s.fileName || `#${i}`;
+    return {id:i.toString(),index:i,label};
+  });
+  const edges=[];
+  for(let i=0;i<n;i++){
+    for(let j=i+1;j<n;j++){
+      const w=mat[i][j];
+      if(w>0)edges.push({source:i.toString(),target:j.toString(),weight:w});
+    }
+  }
+  return{nodes,edges};}
+  function toMermaid(graph){const lines=['graph TD'];graph.edges.forEach(e=>{const pct=(e.weight*100).toFixed(0);
+    const srcLab=graph.nodes[e.source].label.replace(/"/g,'\\"');
+    const tgtLab=graph.nodes[e.target].label.replace(/"/g,'\\"');
+    const srcId='n'+graph.nodes[e.source].index;
+    const tgtId='n'+graph.nodes[e.target].index;
+    lines.push(`  ${srcId}["${srcLab}"] -->|${pct}%| ${tgtId}["${tgtLab}"]`);
+  });
+  return lines.join('\n');}
+  function toAdjacencyMatrix(graph){
+    const n=graph.nodes.length;
+    const esc = s => ("\""+String(s).replace(/\"/g,'\"\"')+"\"");
+    const header=[''].concat(graph.nodes.map(n=>esc(n.label)));
+    const rows=[header.join(',')];
+    const wmap=new Map();
+    graph.edges.forEach(e=>{wmap.set(`${e.source}-${e.target}`,e.weight);wmap.set(`${e.target}-${e.source}`,e.weight);} );
+    graph.nodes.forEach(src=>{const row=[esc(src.label)];graph.nodes.forEach(tgt=>{row.push(wmap.get(`${src.id}-${tgt.id}`)||0);} );rows.push(row.join(','));});
+    return rows.join('\n');
+  }
+  function calculateNetworkStats(graph){const n=graph.nodes.length,m=graph.edges.length;const density=n>1?(2*m)/(n*(n-1)):0;return{nodes:n,edges:m,density};}
+
+  // global state for correlation
+  window.corrState = { strategies: [], filenames: [] };
+  window.showCorrelation = function(){document.getElementById('corrSec').style.display='block';document.getElementById('corrSec').scrollIntoView({behavior:'smooth'});};
+  // helper: collect KPI names from a strategy object
+  function collectStrategyKpis(strat) {
+    const set = new Set();
+    const all = [];
+    if (strat.entryIndicators) all.push(...strat.entryIndicators);
+    if (strat.priceIndicators) all.push(...strat.priceIndicators);
+    all.forEach(ind => {
+      const res = resolveReferences(ind, strat, new Set());
+      res.forEach(r => {
+        const name = formatIndicator(r, false);
+        if (name) set.add(name);
+      });
+    });
+    return set;
+  }
+
+  // helper: refresh KPI multiselect based on corrState.availableKpis
+  function updateKpiSelector() {
+    const sel = document.getElementById('corrKpis');
+    if (!sel) return;
+    // clear existing
+    sel.innerHTML = '';
+    const arr = Array.from(window.corrState.availableKpis || []).sort();
+    arr.forEach(k => {
+      const opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = k;
+      sel.appendChild(opt);
+    });
+  }
+
+  window.loadSqxFiles = async function(e){
+      const files = Array.from(e.target.files);
+      const info = document.getElementById('sqxFileInfo');
+      window.corrState.strategies = [];
+      window.corrState.filenames = [];
+      window.corrState.availableKpis = new Set();
+      // initial label reflecting selection count (browser input shows its own text separately)
+      if (files.length === 0) {
+        info.textContent = t('t_sqxNoFiles');
+      } else if (files.length === 1) {
+        info.textContent = files[0].name;
+      } else {
+        info.textContent = files.length + ' ' + t('t_sqxFilesSelected');
+      }
+
+      for (const f of files) {
+        try {
+          const buf = await f.arrayBuffer();
+          const strat = await parseSqxFile(new Uint8Array(buf));
+          strat.fileName = f.name;
+          // ensure there is a human-readable name for graph labels
+          if (!strat.name || strat.name.trim() === '') {
+            strat.name = f.name;
+          }
+          window.corrState.strategies.push(strat);
+          window.corrState.filenames.push(f.name);
+          // gather KPIs from this strategy
+          collectStrategyKpis(strat).forEach(k => window.corrState.availableKpis.add(k));
+        } catch (err) {
+          console.error('parse error', err);
+          // notify user of parsing failure with readable message
+          const msg = err && err.message ? (t('t_sqxParseError') + f.name + ' — ' + err.message)
+                                      : (t('t_sqxParseError') + f.name);
+          toast(msg, 'warn');
+        }
+      }
+      // final label shows loaded file names or fallback
+      if (window.corrState.filenames.length) {
+        info.textContent = window.corrState.filenames.join(', ');
+      } else {
+        if (files.length === 0) {
+          info.textContent = t('t_sqxNoFiles');
+        } else {
+          // user selected files but none could be parsed
+          info.textContent = files.length + ' ' + t('t_sqxFilesSelected') + ` (${t('t_noStrategies')})`;
+        }
+      }
+      // update KPI selector whenever strategies change
+      updateKpiSelector();
+    };
+  // Helper: export correlation pairs as CSV
+  window.exportCorrelationCSV = function(encodedData) {
+    try {
+      const pairs = JSON.parse(atob(encodedData));
+      let csv = 'Strategy 1,Strategy 2,Similarity\n';
+      pairs.forEach(p => {
+        const name1 = `"${p.name1.replace(/"/g, '""')}"`;
+        const name2 = `"${p.name2.replace(/"/g, '""')}"`;
+        csv += `${name1},${name2},${(p.sim * 100).toFixed(1)}\n`;
+      });
+      downloadFile(csv, 'correlation-pairs.csv', 'text/csv');
+    } catch (e) {
+      toast('Export failed', 'error');
+    }
+  };
+
+  // Helper: export clusters as JSON
+  window.exportClusterJSON = function(encodedData) {
+    try {
+      const clusters = JSON.parse(atob(encodedData));
+      const json = JSON.stringify(clusters, null, 2);
+      downloadFile(json, 'clusters.json', 'application/json');
+    } catch (e) {
+      toast('Export failed', 'error');
+    }
+  };
+
+  // Helper: copy text to clipboard
+  window.copyToClipboard = function(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      toast('Copied to clipboard', 'success');
+    }).catch(() => {
+      toast('Copy failed', 'error');
+    });
+  };
+
+  // Helper: download file
+  function downloadFile(content, filename, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  window.runCorrelation = function(){
+    const th = parseFloat(document.getElementById('corrThreshold').value) || 0.6;
+    const type = document.getElementById('corrType').value;
+    const strs = window.corrState.strategies;
+    
+    if (!strs.length) {
+      alert(t('t_noStrategies'));
+      return;
+    }
+
+    // gather selected KPIs to guide representative choice
+    const sel = document.getElementById('corrKpis');
+    const preferred = [];
+    if (sel) {
+      Array.from(sel.selectedOptions).forEach(o => preferred.push(o.value));
+    }
+
+    try {
+      const { matrix } = correlateStrategies(strs, { type, threshold: th });
+      const clusters = clusterStrategies(matrix, strs, th, { preferredKpis: preferred });
+      const outDiv = document.getElementById('corrResults');
+      
+      // Create new analysis panel (replaces Mermaid visualization)
+      const panelHTML = createAnalysisPanel(clusters, matrix, strs, { threshold: th, highlightKpis: preferred });
+      outDiv.innerHTML = panelHTML;
+      
+      // Attach event listeners for interactive features
+      attachHeatmapEventListeners(strs, matrix);
+      
+      toast('Correlation analysis complete', 'success');
+    } catch (err) {
+      console.error('Correlation analysis failed', err);
+      toast('Analysis failed: ' + (err.message || err), 'error');
+    }
+  };
+
+  // Attach search and filtering event listeners
+  function attachHeatmapEventListeners(strategies, matrix) {
+    // Search in pairs table
+    const pairSearch = document.getElementById('corrPairSearch');
+    if (pairSearch) {
+      pairSearch.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        const rows = document.querySelectorAll('.corr-pair-row');
+        rows.forEach(row => {
+          const text = row.textContent.toLowerCase();
+          row.style.display = text.includes(query) ? '' : 'none';
+        });
+      });
+    }
+  };
 </script>
 </body>
 </html>

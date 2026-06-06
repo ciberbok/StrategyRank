@@ -28,3 +28,10 @@ package-lock.json
 # Temp
 *.tmp
 *.out
+ 
+# Local helper scripts and temporary tools used during debugging
+/scripts/*.js
+
+# Test output and workspace storage
+/tmp/
+.history/
